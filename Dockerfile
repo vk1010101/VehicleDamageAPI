@@ -4,18 +4,21 @@ FROM runpod/pytorch:2.2.1-py3.10-cuda12.1.1-devel-ubuntu22.04
 # 2. Set the working directory
 WORKDIR /app
 
-# 3. Install Ollama and system dependencies for vision/AI
-RUN curl -fsSL https://ollama.com/install.sh | sh
+# 3. Install ALL system dependencies first (FIXED)
 RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
     libgl1-mesa-glx \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# 4. Pre-download the vision model (so it's baked into the image)
-# We briefly start the daemon to pull the model during the image build
+# 4. Install Ollama (NOW CURL IS READY)
+RUN curl -fsSL https://ollama.com/install.sh | sh
+
+# 5. Pre-download the vision model (so it's baked into the image)
 RUN (ollama serve &) && sleep 5 && ollama pull gemma3:4b
 
-# 5. Install Python dependencies
+# 6. Install Python dependencies
 RUN pip install --no-cache-dir \
     runpod \
     ultralytics \
@@ -23,14 +26,11 @@ RUN pip install --no-cache-dir \
     requests \
     pillow
 
-# 6. Copy only the necessary vision AI logic
-COPY damage_service.py .
-COPY car_damage.pt .
-COPY handler.py .
+# 7. Copy ONLY vision AI code (re-using your existing logic)
+COPY damage_service.py car_damage.pt handler.py .
 
-# 7. Add an entrypoint script to start the Ollama daemon before the handler
+# 8. Start-up script
 RUN echo "#!/bin/bash\nollama serve &\nsleep 5\npython -u /app/handler.py" > /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# Start the API handler
 CMD ["/app/entrypoint.sh"]
