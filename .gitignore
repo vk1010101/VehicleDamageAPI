@@ -1,0 +1,16 @@
+.claude/
+.vscode/
+*.local.json
+__pycache__/
+*.pyc
+uploads/
+excel_files/
+.env
+.ipynb_checkpoints/
+*.enc
+static/
+templates/
+app.py
+Data.xlsx
+token_map.json
+requirement/
