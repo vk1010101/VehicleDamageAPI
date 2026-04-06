@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 3. Install Ollama binary directly to a safe path
-# Using -f (fail) and -L (follow) to ensure we don't save error pages as binaries
-RUN curl -fsSL https://ollama.com/download/ollama-linux-amd64 -o /usr/local/bin/ollama \
+# Using a versioned GitHub Release URL for stability (avoids 404s from redirects)
+RUN curl -fsSL https://github.com/ollama/ollama/releases/download/v0.20.2/ollama-linux-amd64 -o /usr/local/bin/ollama \
     && chmod +x /usr/local/bin/ollama
 
 # 4. Python dependencies
