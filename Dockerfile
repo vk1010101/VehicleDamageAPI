@@ -9,12 +9,12 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     libgl1-mesa-glx \
     libglib2.0-0 \
+    zstd \
     && rm -rf /var/lib/apt/lists/*
 
 # 3. Install Ollama binary directly to a safe path
-# Using a versioned GitHub Release URL for stability (avoids 404s from redirects)
-RUN curl -fsSL https://github.com/ollama/ollama/releases/download/v0.20.2/ollama-linux-amd64 -o /usr/local/bin/ollama \
-    && chmod +x /usr/local/bin/ollama
+# Extracting the zst archive into /usr since raw binaries are no longer distributed directly
+RUN curl -fsSL https://github.com/ollama/ollama/releases/download/v0.20.2/ollama-linux-amd64.tar.zst | zstd -d | tar -xf - -C /usr
 
 # 4. Python dependencies
 # First install the specific numpy version to avoid NumPy 2.x breaking everything
