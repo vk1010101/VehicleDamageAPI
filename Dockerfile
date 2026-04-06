@@ -12,11 +12,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 3. Install Ollama binary directly to a safe path
-RUN curl -L https://ollama.com/download/ollama-linux-amd64 -o /usr/local/bin/ollama \
+# Using -f (fail) and -L (follow) to ensure we don't save error pages as binaries
+RUN curl -fsSL https://ollama.com/download/ollama-linux-amd64 -o /usr/local/bin/ollama \
     && chmod +x /usr/local/bin/ollama
 
 # 4. Python dependencies
+# First install the specific numpy version to avoid NumPy 2.x breaking everything
+# We explicitly install the core dependencies for damage_service.py
 RUN pip install --no-cache-dir \
+    "numpy<2" \
     runpod \
     ultralytics \
     opencv-python-headless \
@@ -34,7 +38,15 @@ echo "Starting Ollama daemon..."\n\
 ollama serve > /app/ollama.log 2>&1 &\n\
 \n\
 echo "Waiting for Ollama to wake up..."\n\
-sleep 15\n\
+# Increase wait time or better yet, loop until responsive\n\
+for i in {1..20}; do\n\
+    if curl -s http://localhost:11434/api/tags > /dev/null; then\n\
+        echo "Ollama is UP."\n\
+        break\n\
+    fi\n\
+    echo "Waiting for Ollama... ($i/20)"\n\
+    sleep 3\n\
+done\n\
 \n\
 echo "Current Ollama status:"\n\
 ollama --version || echo "Ollama NOT FOUND in path"\n\
