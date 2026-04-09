@@ -13,12 +13,27 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 3. Install Ollama binary directly to a safe path
-# Extracting the zst archive into /usr since raw binaries are no longer distributed directly
 RUN curl -fsSL https://github.com/ollama/ollama/releases/download/v0.20.2/ollama-linux-amd64.tar.zst | zstd -d | tar -xf - -C /usr
 
-# 4. Python dependencies
-# First install the specific numpy version to avoid NumPy 2.x breaking everything
-# We explicitly install the core dependencies for damage_service.py
+# 4. BAKE the model into the image at build time
+#    Start Ollama, pull the model, then stop Ollama. The model weights
+#    end up in /root/.ollama/models and ship with every container.
+#    This eliminates the 3+ min cold-start download entirely.
+RUN ollama serve & \
+    SERVER_PID=$! && \
+    sleep 5 && \
+    for i in $(seq 1 30); do \
+        curl -s http://localhost:11434/api/tags > /dev/null && break; \
+        echo "Waiting for Ollama to start... ($i/30)"; \
+        sleep 2; \
+    done && \
+    echo "Pulling gemma3:4b into image layer..." && \
+    ollama pull gemma3:4b && \
+    echo "Model baked successfully!" && \
+    kill $SERVER_PID && \
+    wait $SERVER_PID 2>/dev/null || true
+
+# 5. Python dependencies
 RUN pip install --no-cache-dir \
     "numpy<2" \
     runpod \
@@ -27,36 +42,28 @@ RUN pip install --no-cache-dir \
     requests \
     pillow
 
-# 5. Copy vision AI files
+# 6. Copy vision AI files
 COPY damage_service.py car_damage.pt handler.py .
 
-# 6. "Ultimate" Entrypoint: Super resilient logs + error catching
+# 7. Entrypoint — NO model pull needed, just start Ollama and the handler
 RUN printf '#!/bin/bash\n\
 echo "--- CONTAINER STARTING ---"\n\
 export PATH=$PATH:/usr/local/bin\n\
 echo "Starting Ollama daemon..."\n\
 ollama serve > /app/ollama.log 2>&1 &\n\
 \n\
-echo "Waiting for Ollama to wake up..."\n\
-# Increase wait time or better yet, loop until responsive\n\
-for i in {1..20}; do\n\
+echo "Waiting for Ollama to be ready..."\n\
+for i in {1..30}; do\n\
     if curl -s http://localhost:11434/api/tags > /dev/null; then\n\
         echo "Ollama is UP."\n\
         break\n\
     fi\n\
-    echo "Waiting for Ollama... ($i/20)"\n\
-    sleep 3\n\
+    echo "Waiting for Ollama... ($i/30)"\n\
+    sleep 1\n\
 done\n\
 \n\
-echo "Current Ollama status:"\n\
-ollama --version || echo "Ollama NOT FOUND in path"\n\
-\n\
-echo "Attempting to pull gemma3:4b (this may take 5 mins)..."\n\
-if ollama pull gemma3:4b; then\n\
-    echo "Model pull SUCCESS."\n\
-else\n\
-    echo "Model pull FAILED - check network. Continuing anyway to see logs."\n\
-fi\n\
+echo "Verifying model is present..."\n\
+ollama list\n\
 \n\
 echo "Starting Python handler.py..."\n\
 python -u /app/handler.py\n' > /app/entrypoint.sh \
